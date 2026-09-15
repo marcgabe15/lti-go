@@ -42,10 +42,21 @@ Resolution:
   for the common case, and a bare primitive
   (`VerifyLaunch(r) (*Claims, error)`) plus `ContextWithClaims`/
   `ClaimsFromContext` for anyone wiring their own middleware.
-- Outbound clients (added in later phases) are never constructed with a
-  bare token by the caller -- they come off a completed launch
-  (`claims.AGS(ctx)` / `claims.NRPS(ctx)`), because only a verified launch
-  carries the platform and endpoint claims needed to build them.
+- Outbound clients are never constructed with a bare token by the
+  caller -- they come off a completed launch's `Claims`
+  (`ags.NewClientForLaunch(claims, tokens)` /
+  `nrps.NewClientForLaunch(claims, tokens)`), because only a verified
+  launch carries the platform and endpoint claims needed to build them,
+  and each service is granted (or not) per-launch. This was originally
+  sketched as `claims.AGS(ctx)`/`claims.NRPS(ctx)` sugar methods on
+  `Claims` itself, but that would require the root `lti` package to
+  import `ags`/`nrps`/`token` for their concrete return types -- and
+  those packages must import `lti` for `Platform`, `TokenCacheStore`,
+  and `KeyManager`, which creates the same import-cycle shape the
+  `keymanager` subpackage hit (see below). `Tool.Store()` and
+  `Tool.KeyManager()` accessors let a caller build one shared
+  `token.Source` (`token.NewCachingSource(tool.Store(), tool.KeyManager())`)
+  and reuse it across every launch.
 
 ## Package layout (v0.1)
 
@@ -69,11 +80,15 @@ lti-go/
 
   internal/idgen/                Random ID generation (nonces, state ids, key ids, launch ids)
   internal/jose/                 Small go-jose wrappers: PEM parsing, sign/verify/parse helpers
+  internal/linkheader/           RFC 8288 Link-header rel="next" parsing, shared by ags and nrps
 
   jwkset/                        Fetch + cache a platform's published JWKS, kid-miss forces one refetch
+  token/                         Access-token acquisition: client_credentials + JWT client-assertion, cached
+  ags/                           Assignment & Grade Services client (line items, scores, results)
+  nrps/                          Names & Role Provisioning Service client (paginated roster)
   memstore/                      In-memory reference Store implementation
   storetest/                     Store conformance test suite -- any Store implementation should pass it
-  ltitest/                       Fake-platform test harness, RoundTripper mock, adjustable Clock
+  ltitest/                       Fake-platform test harness (incl. a fake token endpoint), RoundTripper mock, adjustable Clock
   examples/basic-tool/           Minimal runnable tool
 ```
 
@@ -121,10 +136,11 @@ type Claims struct {
 func (c *Claims) Platform() *Platform
 ```
 
-`AGS()`/`NRPS()`/`DeepLinkingResponse()` sugar methods are added once
-those packages exist (v0.2/v0.3) -- the claim data (`AGSEndpoint`,
-`NRPSEndpoint`, `DeepLinking`) is already captured in v0.1 since it comes
-straight off the id_token.
+`AGSEndpoint`/`NRPSEndpoint` are populated straight off the id_token by
+`VerifyLaunch` regardless of whether those services end up being used;
+`DeepLinking` likewise. See "Package layout" above for why the client
+constructors live in `ags`/`nrps` as `NewClientForLaunch(claims, tokens)`
+rather than as methods on `Claims`.
 
 **Errors**: one wrapped struct (`Error{Code ErrorCode, Msg string, Err
 error}`) with `Unwrap`/`Is` plus sentinel vars (`ErrUnregisteredPlatform`,
@@ -168,18 +184,24 @@ hierarchy.
 
 ## Phased delivery plan
 
-- **v0.1 (this release)** -- Core launch verification: `Platform`/
+- **v0.1 (shipped)** -- Core launch verification: `Platform`/
   `Deployment` types, `Store` + `memstore` + `storetest`, `keymanager`,
   OIDC login-init, full `VerifyLaunch` (state, nonce, id_token, all 3
   message-type claim schemas, deployment enforcement), `ltik`,
   `JWKSHandler`, error hierarchy, `ltitest` fake-platform harness,
   `examples/basic-tool`. This is the entire spec-mandated trust boundary
   and is fully testable without a live LMS.
-- **v0.2** -- Deep Linking (`deeplink` package): response builder,
-  content-item types, auto-submit form renderer, `Claims.DeepLinkingResponse()`.
-- **v0.3** -- Outbound services: `token` (client_credentials + JWT
-  client-assertion, `TokenCacheStore`-backed caching), `ags` (line items,
-  scores, results), `nrps` (roster), `Claims.AGS()`/`Claims.NRPS()` sugar.
+- **v0.3 (shipped, ahead of v0.2)** -- Outbound services: `token`
+  (client_credentials + JWT client-assertion, `TokenCacheStore`-backed
+  caching), `ags` (line item CRUD, score submission, results,
+  `Link`-header pagination), `nrps` (paginated roster with a `MaxPages`
+  guard). Constructed via `ags.NewClientForLaunch(claims, tokens)` /
+  `nrps.NewClientForLaunch(claims, tokens)` rather than `Claims` sugar
+  methods (see "Package layout"). `ltitest.FakePlatform` gained a fake
+  token endpoint so the full launch -> token -> AGS/NRPS path is
+  covered by an in-process integration test with no live LMS.
+- **v0.2 (not yet shipped)** -- Deep Linking (`deeplink` package):
+  response builder, content-item types, auto-submit form renderer.
 - **v0.4** -- `dynreg` (Dynamic Registration) + `PlatformManager`
   ergonomics polish (reviewed activation flow for auto-registered
   platforms).
@@ -205,3 +227,23 @@ hierarchy.
   paths).
 - `go run ./examples/basic-tool` as a manual smoke test -- confirmed the
   JWKS endpoint serves a valid RSA public key for a registered platform.
+
+## Verification (v0.3: ags, nrps, token)
+
+- `token`: a fake token-endpoint `httptest.Server` verifies the request
+  is a well-formed client_credentials + client_assertion grant; a
+  caching test proves scope-set canonicalization (order-independent) and
+  that distinct scope sets trigger independent fetches/cache entries; an
+  error-propagation test for a rejected grant.
+- `ags`/`nrps`: unit tests against fake HTTP servers with a stub
+  `token.Source`, covering line item CRUD, score submission, result
+  retrieval, roster retrieval, `Link`-header pagination (including a
+  `MaxPages` test that would loop forever without the guard), and the
+  `ErrAGSNotAvailable`/`ErrNRPSNotAvailable` not-granted path.
+- `TestAGSAndNRPS_EndToEnd` (root package): the real path end to end --
+  a real `ltitest.FakePlatform` login+launch grants AGS/NRPS via id_token
+  claims, `token.NewCachingSource(tool.Store(), tool.KeyManager())`
+  fetches real access tokens from the fake platform's token endpoint
+  (proving the client-assertion flow actually round-trips), and
+  `ags`/`nrps` clients built from the resulting `Claims` call fake
+  AGS/NRPS servers with those tokens.

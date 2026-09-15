@@ -6,12 +6,13 @@ platform (an LMS like Canvas, Moodle, or Blackboard).
 
 ## Status
 
-v0.1: core launch verification (OIDC login, id_token/state/nonce
-validation, `ltik` session resumption, JWKS, platform/deployment
-management). Assignment and Grade Services, Names and Role Provisioning
-Service, Deep Linking response building, and Dynamic Registration land in
-later releases -- see [CHANGELOG.md](./CHANGELOG.md) and
-[docs/DESIGN.md](./docs/DESIGN.md) for the roadmap.
+Core launch verification (OIDC login, id_token/state/nonce validation,
+`ltik` session resumption, JWKS, platform/deployment management),
+Assignment and Grade Services (`ags`), and Names and Role Provisioning
+Service (`nrps`) are implemented. Deep Linking response building and
+Dynamic Registration land in later releases -- see
+[CHANGELOG.md](./CHANGELOG.md) and [docs/DESIGN.md](./docs/DESIGN.md)
+for the roadmap.
 
 ## Install
 
@@ -105,6 +106,42 @@ result, err := fp.Launch(tool, "https://tool.example.com/lti/launch", ltitest.ID
 	TargetLinkURI: "https://tool.example.com/lti/launch",
 })
 // result.Claims holds what your launch handler received.
+```
+
+## Assignment and Grade Services / Names and Role Provisioning Service
+
+AGS and NRPS clients are built from a completed launch's `Claims`, not
+constructed directly with a token -- only a verified launch carries the
+platform and endpoint claims they need, and each is granted (or not)
+per-launch. `ags.NewClientForLaunch`/`nrps.NewClientForLaunch` return
+`lti.ErrAGSNotAvailable`/`lti.ErrNRPSNotAvailable` if the platform didn't
+grant that service to this launch.
+
+Both share a `token.Source`, obtained once from your `Tool` and reused
+across launches (it caches access tokens per platform+scopes via your
+`Store`):
+
+```go
+tokens := token.NewCachingSource(tool.Store(), tool.KeyManager())
+
+mux.Handle("/lti/launch", tool.LaunchHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	claims, _ := lti.ClaimsFromContext(r.Context())
+
+	if agsClient, err := ags.NewClientForLaunch(claims, tokens); err == nil {
+		agsClient.SubmitScore(r.Context(), lineItemURL, &ags.Score{
+			UserID:           claims.Subject,
+			ScoreGiven:       ptr(9.0),
+			ScoreMaximum:     ptr(10.0),
+			ActivityProgress: ags.ActivityProgressCompleted,
+			GradingProgress:  ags.GradingProgressFullyGraded,
+		})
+	}
+
+	if nrpsClient, err := nrps.NewClientForLaunch(claims, tokens); err == nil {
+		members, _ := nrpsClient.GetMembers(r.Context(), nil)
+		_ = members // roster: user_id, roles, name, email, ...
+	}
+})))
 ```
 
 ## Errors

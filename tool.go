@@ -102,6 +102,16 @@ func (t *Tool) Platforms() *PlatformManager {
 	return &PlatformManager{store: t.store, keyManager: t.keyManager}
 }
 
+// Store returns the Store this Tool was configured with, so other
+// packages that need to share it (for example token.NewCachingSource)
+// don't require a separate reference to be threaded through.
+func (t *Tool) Store() Store { return t.store }
+
+// KeyManager returns the KeyManager this Tool was configured with (or
+// the default RSAKeyManager if none was given to New), for the same
+// reason as Store.
+func (t *Tool) KeyManager() KeyManager { return t.keyManager }
+
 // PlatformManager provides CRUD operations for registering and managing
 // platforms, their signing keys, and their deployments.
 type PlatformManager struct {

@@ -17,3 +17,14 @@ v1.0.0, minor versions may include breaking changes.
   reference implementation (`memstore`) and conformance suite
   (`storetest`), and a fake-platform test harness (`ltitest`) for
   end-to-end testing without a live LMS.
+- Assignment and Grade Services (`ags`): line item CRUD, score
+  submission, and result retrieval, with `Link`-header pagination.
+- Names and Role Provisioning Service (`nrps`): paginated roster
+  retrieval (`GetMembers`), with a `MaxPages` guard against
+  misbehaving/looping `Link` headers.
+- `token`: OAuth2 access-token acquisition from a platform via
+  client_credentials + private_key_jwt client assertion, cached per
+  platform+scopes via `Store`. Shared by `ags` and `nrps`.
+- `ltitest.FakePlatform` now also serves a fake OAuth2 token endpoint
+  (`TokenEndpoint`), enabling end-to-end tests of the full
+  launch -> token -> AGS/NRPS call path.

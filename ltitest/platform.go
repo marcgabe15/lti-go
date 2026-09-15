@@ -35,9 +35,10 @@ type FakePlatform struct {
 	// request to the fake authorization endpoint.
 	LastLoginRequest url.Values
 
-	server *httptest.Server
-	priv   *rsa.PrivateKey
-	kid    string
+	server            *httptest.Server
+	priv              *rsa.PrivateKey
+	kid               string
+	tokenRequestCount int
 }
 
 // NewFakePlatform starts a fake platform with its own RSA key pair. Call
@@ -53,6 +54,7 @@ func NewFakePlatform(issuer, clientID string) (*FakePlatform, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth", fp.handleAuth)
 	mux.HandleFunc("/jwks", fp.handleJWKS)
+	mux.HandleFunc("/token", fp.handleToken)
 	fp.server = httptest.NewServer(mux)
 	return fp, nil
 }
@@ -67,6 +69,18 @@ func (fp *FakePlatform) AuthenticationEndpoint() string { return fp.server.URL +
 // JWKSURI returns the fake platform's JWKS endpoint URL, suitable for
 // Platform.KeyConfig.JWKSURI.
 func (fp *FakePlatform) JWKSURI() string { return fp.server.URL + "/jwks" }
+
+// TokenEndpoint returns the fake platform's OAuth2 token endpoint URL,
+// suitable for Platform.AccessTokenEndpoint. It accepts any well-formed
+// client_credentials + client_assertion request without verifying the
+// assertion's signature (that verification path is covered by the token
+// package's own tests) and returns an incrementing fake access token, so
+// integration tests can exercise the full launch -> AGS/NRPS
+// token-acquisition path.
+func (fp *FakePlatform) TokenEndpoint() string { return fp.server.URL + "/token" }
+
+// TokenRequestCount returns how many requests TokenEndpoint has handled.
+func (fp *FakePlatform) TokenRequestCount() int { return fp.tokenRequestCount }
 
 // PublicKeyPEM returns the fake platform's public key, PEM-encoded --
 // useful for registering a Platform with KeyConfigMethodRSAKey instead of
@@ -83,6 +97,17 @@ func (fp *FakePlatform) handleAuth(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	fp.LastLoginRequest = r.Form
 	w.WriteHeader(http.StatusOK)
+}
+
+func (fp *FakePlatform) handleToken(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	fp.tokenRequestCount++
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token": fmt.Sprintf("fake-access-token-%d", fp.tokenRequestCount),
+		"token_type":   "Bearer",
+		"expires_in":   3600,
+	})
 }
 
 func (fp *FakePlatform) handleJWKS(w http.ResponseWriter, r *http.Request) {
