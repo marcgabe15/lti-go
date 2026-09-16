@@ -200,13 +200,28 @@ hierarchy.
   methods (see "Package layout"). `ltitest.FakePlatform` gained a fake
   token endpoint so the full launch -> token -> AGS/NRPS path is
   covered by an in-process integration test with no live LMS.
-- **v0.2 (not yet shipped)** -- Deep Linking (`deeplink` package):
-  response builder, content-item types, auto-submit form renderer.
-- **v0.4** -- `dynreg` (Dynamic Registration) + `PlatformManager`
-  ergonomics polish (reviewed activation flow for auto-registered
-  platforms).
+- **v0.2 (shipped)** -- Deep Linking (`deeplink`): response builder,
+  content-item types (`LTIResourceLink`, `Link`, `HTML`, `Image`,
+  `File`), accept-type/accept-multiple enforcement in `AddItem`,
+  auto-submit form renderer. Constructed via
+  `deeplink.NewResponseForLaunch(claims, keyManager)`, mirroring the
+  `ags`/`nrps` `NewClientForLaunch` pattern -- same import-cycle
+  reasoning applies (`deeplink` needs `lti.Platform`/`lti.KeyManager`,
+  so `Claims` can't return a concrete `*deeplink.Response`).
+- **v0.4 (shipped)** -- Dynamic Registration (`dynreg`): a mountable
+  `Handler` that fetches a platform's OpenID configuration, POSTs a
+  registration request extended with the LTI Tool Configuration claim,
+  and persists the resulting `Platform` (inactive by default) and
+  `deployment_id` via `Store` directly (no `Tool`/`KeyManager`
+  dependency needed -- key generation stays lazy, on first login/launch
+  toward the new platform). `OnRegistered` lets callers replace the
+  default "close this popup" completion page.
 - **v1.0** -- Stabilization: API freeze review, lint-clean, race-tested,
   CHANGELOG/UPGRADING conventions locked, godoc pass.
+
+All planned phases through v0.4 have shipped; `PlatformManager`
+ergonomics polish and any spec gaps found in real-world use are the main
+candidates for a v0.5 before the v1.0 stabilization pass.
 
 ## Verification (v0.1)
 
@@ -247,3 +262,26 @@ hierarchy.
   (proving the client-assertion flow actually round-trips), and
   `ags`/`nrps` clients built from the resulting `Claims` call fake
   AGS/NRPS servers with those tokens.
+
+## Verification (v0.2: deeplink)
+
+- Unit tests for `AddItem`'s accept-type and accept-multiple enforcement.
+- `TestDeepLinkingResponse_EndToEnd`: a real `ltitest.FakePlatform`
+  DeepLinkingRequest launch, a signed response built from the resulting
+  `Claims`, verified by parsing the JWT against the tool's own key for
+  that platform (the same key a real platform would resolve via this
+  tool's JWKS) and asserting the `content_items` claim round-trips with
+  its `type` discriminator intact.
+
+## Verification (v0.4: dynreg)
+
+- `TestHandler_FullRegistrationFlow`: a fake platform serves both an
+  OpenID configuration and a registration endpoint; asserts the
+  persisted `Platform` has the platform's (not the tool's) JWKS URI,
+  starts inactive, and that the returned `deployment_id` was registered.
+- Negative-path tests: missing `openid_configuration` query parameter
+  (400), a rejecting registration endpoint (502, and no `Platform`
+  persisted), and config validation (`NewHandler` rejects a `Config`
+  missing `Store`/`InitiateLoginURI`/`RedirectURIs`/`JWKSURI`).
+- `TestHandler_OnRegisteredHookOverridesDefaultPage` confirms the default
+  completion page is skipped when a custom hook is provided.

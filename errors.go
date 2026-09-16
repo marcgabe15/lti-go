@@ -10,32 +10,58 @@ import (
 type ErrorCode string
 
 const (
-	CodeUnregisteredPlatform    ErrorCode = "unregistered_platform"
-	CodeInactivePlatform        ErrorCode = "inactive_platform"
-	CodeInvalidLoginRequest     ErrorCode = "invalid_login_request"
-	CodeInvalidState            ErrorCode = "invalid_state"
-	CodeStateExpired            ErrorCode = "state_expired"
-	CodeInvalidNonce            ErrorCode = "invalid_nonce"
-	CodeNonceReused             ErrorCode = "nonce_reused"
-	CodeInvalidIDToken          ErrorCode = "invalid_id_token"
-	CodeTokenExpired            ErrorCode = "token_expired"
-	CodeTokenTooOld             ErrorCode = "token_too_old"
-	CodeInvalidAudience         ErrorCode = "invalid_audience"
-	CodeAzpMismatch             ErrorCode = "azp_mismatch"
-	CodeInvalidAlgorithm        ErrorCode = "invalid_algorithm"
-	CodeInvalidMessageType      ErrorCode = "invalid_message_type"
-	CodeMissingClaim            ErrorCode = "missing_claim"
-	CodeUnknownDeployment       ErrorCode = "unknown_deployment"
-	CodeUnknownSigningKey       ErrorCode = "unknown_signing_key"
-	CodeInvalidLTIK             ErrorCode = "invalid_ltik"
-	CodeLaunchNotFound          ErrorCode = "launch_not_found"
-	CodeAGSNotAvailable         ErrorCode = "ags_not_available"
-	CodeNRPSNotAvailable        ErrorCode = "nrps_not_available"
-	CodeDeepLinkingNotAvailable ErrorCode = "deep_linking_not_available"
-	CodePlatformAlreadyExists   ErrorCode = "platform_already_exists"
-	CodeDeploymentAlreadyExists ErrorCode = "deployment_already_exists"
-	CodeNotFound                ErrorCode = "not_found"
-	CodeInvalidConfig           ErrorCode = "invalid_config"
+	// Login / platform resolution
+
+	CodeUnregisteredPlatform ErrorCode = "unregistered_platform" // no Platform matches the (issuer, client_id) in the request
+	CodeInactivePlatform     ErrorCode = "inactive_platform"     // the Platform is registered but Active is false
+	CodeInvalidLoginRequest  ErrorCode = "invalid_login_request" // the OIDC login-initiation request is missing required parameters
+
+	// State (returned by the platform alongside the id_token)
+
+	CodeInvalidState ErrorCode = "invalid_state" // the state JWT failed signature/issuer verification
+	CodeStateExpired ErrorCode = "state_expired" // the state JWT verified but its TTL has passed
+
+	// Nonce (OIDC replay protection)
+
+	CodeInvalidNonce ErrorCode = "invalid_nonce" // the id_token's nonce claim is missing or malformed
+	CodeNonceReused  ErrorCode = "nonce_reused"  // the nonce was already consumed, never issued, or has expired
+
+	// id_token validation
+
+	CodeInvalidIDToken     ErrorCode = "invalid_id_token"     // the id_token failed structural or signature validation
+	CodeTokenExpired       ErrorCode = "token_expired"        // the id_token's exp claim has passed
+	CodeTokenTooOld        ErrorCode = "token_too_old"        // the id_token's iat claim is older than the configured max age
+	CodeInvalidAudience    ErrorCode = "invalid_audience"     // the id_token's aud does not include the platform's client_id
+	CodeAzpMismatch        ErrorCode = "azp_mismatch"         // aud has multiple values and azp does not equal the client_id
+	CodeInvalidAlgorithm   ErrorCode = "invalid_algorithm"    // the token was not signed with RS256
+	CodeInvalidMessageType ErrorCode = "invalid_message_type" // the message_type claim is missing or not one this package supports
+	CodeMissingClaim       ErrorCode = "missing_claim"        // a claim required by the LTI 1.3 core spec is absent
+	CodeUnknownSigningKey  ErrorCode = "unknown_signing_key"  // no key could be resolved to verify the id_token's signature
+
+	// Deployment enforcement
+
+	CodeUnknownDeployment ErrorCode = "unknown_deployment" // deployment_id is not registered for this platform, and no hook accepted it
+
+	// Session resumption (ltik)
+
+	CodeInvalidLTIK    ErrorCode = "invalid_ltik"     // the ltik failed verification or has expired
+	CodeLaunchNotFound ErrorCode = "launch_not_found" // the ltik verified but its LaunchRecord no longer exists (e.g. evicted, TTL passed)
+
+	// Per-service availability (returned by ags/nrps/deeplink, not VerifyLaunch)
+
+	CodeAGSNotAvailable         ErrorCode = "ags_not_available"          // this launch did not grant Assignment and Grade Services
+	CodeNRPSNotAvailable        ErrorCode = "nrps_not_available"         // this launch did not grant Names and Role Provisioning Service
+	CodeDeepLinkingNotAvailable ErrorCode = "deep_linking_not_available" // this launch is not an LtiDeepLinkingRequest
+
+	// Platform/deployment registration
+
+	CodePlatformAlreadyExists   ErrorCode = "platform_already_exists"   // a Platform with this (issuer, client_id) is already registered
+	CodeDeploymentAlreadyExists ErrorCode = "deployment_already_exists" // this deployment_id is already registered for the platform
+
+	// Generic
+
+	CodeNotFound      ErrorCode = "not_found"      // the requested Store record does not exist
+	CodeInvalidConfig ErrorCode = "invalid_config" // Config passed to New is missing a required field
 )
 
 // Error is the error type returned by this package. Compare against a

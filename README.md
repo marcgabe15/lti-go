@@ -6,13 +6,18 @@ platform (an LMS like Canvas, Moodle, or Blackboard).
 
 ## Status
 
-Core launch verification (OIDC login, id_token/state/nonce validation,
-`ltik` session resumption, JWKS, platform/deployment management),
-Assignment and Grade Services (`ags`), and Names and Role Provisioning
-Service (`nrps`) are implemented. Deep Linking response building and
-Dynamic Registration land in later releases -- see
-[CHANGELOG.md](./CHANGELOG.md) and [docs/DESIGN.md](./docs/DESIGN.md)
-for the roadmap.
+All core LTI Advantage flows are implemented: launch verification (OIDC
+login, id_token/state/nonce validation, `ltik` session resumption,
+JWKS, platform/deployment management), Assignment and Grade Services
+(`ags`), Names and Role Provisioning Service (`nrps`), Deep Linking
+(`deeplink`), and Dynamic Registration (`dynreg`). See
+[CHANGELOG.md](./CHANGELOG.md) for what shipped when and
+[docs/DESIGN.md](./docs/DESIGN.md) for the architecture writeup.
+
+**Guides:** see [docs/guides/](./docs/guides/) for task-oriented
+how-tos -- quickstart, platform/key management, handling a launch, Deep
+Linking, grades/roster, Dynamic Registration, testing your tool, and the
+error model.
 
 ## Install
 
@@ -143,6 +148,37 @@ mux.Handle("/lti/launch", tool.LaunchHandler(http.HandlerFunc(func(w http.Respon
 	}
 })))
 ```
+
+## Deep Linking
+
+```go
+import "github.com/marcgabe15/lti-go/deeplink"
+
+resp, err := deeplink.NewResponseForLaunch(claims, tool.KeyManager()) // lti.ErrDeepLinkingNotAvailable if not a deep linking launch
+resp.AddItem(deeplink.LTIResourceLink{Title: "Week 3 Quiz", URL: "https://tool.example.com/quizzes/3"})
+resp.WriteAutoSubmitForm(r.Context(), w) // signs and writes the auto-submitting return form
+```
+
+See [docs/guides/deep-linking.md](./docs/guides/deep-linking.md) for
+content item types and accept-type/accept-multiple handling.
+
+## Dynamic Registration
+
+```go
+import "github.com/marcgabe15/lti-go/dynreg"
+
+handler, err := dynreg.NewHandler(dynreg.Config{
+	Store: store, ToolName: "My Tool",
+	InitiateLoginURI: "https://tool.example.com/lti/login",
+	RedirectURIs:     []string{"https://tool.example.com/lti/launch"},
+	JWKSURI:          "https://tool.example.com/lti/jwks",
+})
+mux.Handle("/lti/register", handler)
+```
+
+New platforms register inactive, pending review --
+[docs/guides/dynamic-registration.md](./docs/guides/dynamic-registration.md)
+covers the full flow.
 
 ## Errors
 

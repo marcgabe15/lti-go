@@ -28,3 +28,15 @@ v1.0.0, minor versions may include breaking changes.
 - `ltitest.FakePlatform` now also serves a fake OAuth2 token endpoint
   (`TokenEndpoint`), enabling end-to-end tests of the full
   launch -> token -> AGS/NRPS call path.
+- Deep Linking (`deeplink`): response builder (`NewResponseForLaunch`,
+  `AddItem`, `Sign`, `WriteAutoSubmitForm`), content item types
+  (`LTIResourceLink`, `Link`, `HTML`, `Image`, `File`), and an
+  auto-submitting HTML form renderer. `AddItem` enforces the launch's
+  declared `accept_types`/`accept_multiple` constraints.
+- Dynamic Registration (`dynreg`): a mountable `Handler` that fetches a
+  platform's OpenID configuration, registers this tool against its
+  registration endpoint, and persists the resulting `Platform`
+  (inactive, pending review) and any assigned `deployment_id`.
+- `docs/guides/`: task-oriented how-to documentation -- quickstart,
+  platform/key management, handling a launch, Deep Linking,
+  grades/roster, Dynamic Registration, testing, and the error model.
