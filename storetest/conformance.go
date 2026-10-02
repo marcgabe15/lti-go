@@ -4,7 +4,9 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +15,24 @@ import (
 
 	"github.com/marcgabe15/lti-go"
 )
+
+var testPlatformCounter int64
+
+// createTestPlatform inserts a real Platform via s and returns it. Tests
+// for entities that reference a platform (deployments, cached tokens,
+// keys) must use an ID that actually exists rather than a bare literal
+// like "p1" -- a relational Store is expected to enforce that foreign
+// key, even though memstore's plain maps don't care.
+func createTestPlatform(t *testing.T, ctx context.Context, s lti.Store) *lti.Platform {
+	t.Helper()
+	n := atomic.AddInt64(&testPlatformCounter, 1)
+	p, err := s.CreatePlatform(ctx, &lti.Platform{
+		Issuer:   fmt.Sprintf("https://storetest.example.com/%d", n),
+		ClientID: fmt.Sprintf("client-%d", n),
+	})
+	require.NoError(t, err)
+	return p
+}
 
 // Run executes the Store conformance suite against a fresh store returned
 // by newStore for each subtest.
@@ -64,27 +84,28 @@ func testPlatforms(t *testing.T, s lti.Store) {
 
 func testDeployments(t *testing.T, s lti.Store) {
 	ctx := context.Background()
+	platformID := createTestPlatform(t, ctx, s).ID
 
-	d, err := s.CreateDeployment(ctx, &lti.Deployment{PlatformID: "p1", DeploymentID: "d1"})
+	d, err := s.CreateDeployment(ctx, &lti.Deployment{PlatformID: platformID, DeploymentID: "d1"})
 	require.NoError(t, err)
 	require.NotEmpty(t, d.ID)
 
-	_, err = s.CreateDeployment(ctx, &lti.Deployment{PlatformID: "p1", DeploymentID: "d1"})
+	_, err = s.CreateDeployment(ctx, &lti.Deployment{PlatformID: platformID, DeploymentID: "d1"})
 	require.ErrorIs(t, err, lti.ErrDeploymentAlreadyExists)
 
-	found, err := s.FindDeployment(ctx, "p1", "d1")
+	found, err := s.FindDeployment(ctx, platformID, "d1")
 	require.NoError(t, err)
 	assert.Equal(t, d.ID, found.ID)
 
-	_, err = s.FindDeployment(ctx, "p1", "missing")
+	_, err = s.FindDeployment(ctx, platformID, "missing")
 	require.ErrorIs(t, err, lti.ErrNotFound)
 
-	list, err := s.ListDeployments(ctx, "p1")
+	list, err := s.ListDeployments(ctx, platformID)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 
-	require.NoError(t, s.DeleteDeployment(ctx, "p1", "d1"))
-	_, err = s.FindDeployment(ctx, "p1", "d1")
+	require.NoError(t, s.DeleteDeployment(ctx, platformID, "d1"))
+	_, err = s.FindDeployment(ctx, platformID, "d1")
 	require.ErrorIs(t, err, lti.ErrNotFound)
 }
 
@@ -146,7 +167,8 @@ func testLaunches(t *testing.T, s lti.Store) {
 
 func testTokenCache(t *testing.T, s lti.Store) {
 	ctx := context.Background()
-	key := lti.TokenCacheKey{PlatformID: "p1", Scopes: "a b"}
+	platformID := createTestPlatform(t, ctx, s).ID
+	key := lti.TokenCacheKey{PlatformID: platformID, Scopes: "a b"}
 
 	_, err := s.GetCachedToken(ctx, key)
 	require.ErrorIs(t, err, lti.ErrNotFound)
@@ -159,18 +181,19 @@ func testTokenCache(t *testing.T, s lti.Store) {
 
 func testKeys(t *testing.T, s lti.Store) {
 	ctx := context.Background()
+	platformID := createTestPlatform(t, ctx, s).ID
 
-	_, err := s.GetKeyPair(ctx, "p1")
+	_, err := s.GetKeyPair(ctx, platformID)
 	require.ErrorIs(t, err, lti.ErrNotFound)
 
-	kp := &lti.KeyPair{PlatformID: "p1", KeyID: "k1", PrivateKey: []byte("priv"), PublicKey: []byte("pub")}
+	kp := &lti.KeyPair{PlatformID: platformID, KeyID: "k1", PrivateKey: []byte("priv"), PublicKey: []byte("pub")}
 	require.NoError(t, s.SaveKeyPair(ctx, kp))
 
-	got, err := s.GetKeyPair(ctx, "p1")
+	got, err := s.GetKeyPair(ctx, platformID)
 	require.NoError(t, err)
 	assert.Equal(t, "k1", got.KeyID)
 
-	require.NoError(t, s.DeleteKeyPair(ctx, "p1"))
-	_, err = s.GetKeyPair(ctx, "p1")
+	require.NoError(t, s.DeleteKeyPair(ctx, platformID))
+	_, err = s.GetKeyPair(ctx, platformID)
 	require.ErrorIs(t, err, lti.ErrNotFound)
 }

@@ -85,8 +85,28 @@ claims, err := tool.VerifyLaunch(r)
 All state (platforms, deployments, nonces, launch records, cached
 tokens, and per-platform signing keys) goes through the `lti.Store`
 interface. `memstore.New()` provides an in-memory implementation for
-tests and local development; implement `lti.Store` against your own
-database for production, and verify it with the conformance suite:
+tests and local development.
+
+For PostgreSQL, `pgstore.New(ctx, db)` wraps your own `*sql.DB` and
+creates its tables automatically (no separate migration step):
+
+```go
+import (
+	_ "github.com/jackc/pgx/v5/stdlib" // or _ "github.com/lib/pq"
+	"github.com/marcgabe15/lti-go/pgstore"
+)
+
+db, _ := sql.Open("pgx", "postgres://user:pass@localhost/mydb")
+store, err := pgstore.New(ctx, db)
+```
+
+Its table/column names follow ltijs's MongoDB schema where the data
+model overlaps -- see
+[docs/guides/postgres-store.md](./docs/guides/postgres-store.md).
+
+For anything else, implement `lti.Store` against your own database and
+verify it with the conformance suite (the same one `memstore` and
+`pgstore` both pass):
 
 ```go
 func TestStore(t *testing.T) {

@@ -8,6 +8,8 @@ it.
 - [Quickstart](./quickstart.md) -- stand up a minimal tool from scratch
 - [Platforms and Keys](./platforms-and-keys.md) -- registering platforms,
   deployments, and managing signing keys
+- [PostgreSQL Store](./postgres-store.md) -- using `pgstore` for real
+  persistence, and how its schema maps to ltijs's
 - [Handling a Launch](./handling-a-launch.md) -- reading claims, roles,
   and context out of a verified launch
 - [Deep Linking](./deep-linking.md) -- returning content items to a

@@ -22,9 +22,11 @@ import "github.com/marcgabe15/lti-go/memstore"
 store := memstore.New()
 ```
 
-For production, implement `lti.Store` against your own database -- see
-[Testing Your Tool](./testing.md) for how to verify your implementation
-against the same conformance suite `memstore` passes.
+For production, use `pgstore` if you're on PostgreSQL -- see
+[PostgreSQL Store](./postgres-store.md) -- or implement `lti.Store`
+against your own database; [Testing Your Tool](./testing.md) covers how
+to verify a custom implementation against the same conformance suite
+`memstore` and `pgstore` both pass.
 
 ## 3. Construct a Tool
 

@@ -12,8 +12,10 @@ tool, _ := lti.New(lti.Config{Issuer: "https://tool.example.com", Store: store})
 
 ## Verifying your own `Store` implementation
 
-If you're implementing `lti.Store` against a real database, run it
-through the same conformance suite `memstore` passes:
+If you're implementing `lti.Store` against a real database (or using
+`pgstore`'s own test as a template -- see
+[PostgreSQL Store](./postgres-store.md)), run it through the same
+conformance suite `memstore` passes:
 
 ```go
 func TestMyStore(t *testing.T) {
@@ -23,7 +25,11 @@ func TestMyStore(t *testing.T) {
 
 This checks platform/deployment CRUD, atomic nonce consumption (under
 concurrency), launch record expiry, token caching, and key storage --
-the full `lti.Store` contract, not just the happy path.
+the full `lti.Store` contract, not just the happy path. Tests for
+deployments, cached tokens, and keys create a real platform first and
+reference its actual ID, so a `Store` that enforces referential
+integrity (a foreign key on `platform_id`, for example) is exercised
+correctly rather than failing on a synthetic ID that was never created.
 
 ## Driving a real launch with `ltitest.FakePlatform`
 

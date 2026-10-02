@@ -40,3 +40,17 @@ v1.0.0, minor versions may include breaking changes.
 - `docs/guides/`: task-oriented how-to documentation -- quickstart,
   platform/key management, handling a launch, Deep Linking,
   grades/roster, Dynamic Registration, testing, and the error model.
+- `pgstore`: a PostgreSQL implementation of `lti.Store`. Wraps a
+  consumer-supplied `*sql.DB` (any `database/sql` driver) and creates
+  its tables idempotently on first use -- no separate migration tool or
+  step. Table/column names mirror ltijs's MongoDB schema where the data
+  model overlaps (`platforms`, `nonces`, `id_tokens`, `access_tokens`);
+  `deployments` and `platform_keys` have no ltijs equivalent, since they
+  close gaps this SDK deliberately closes (see docs/DESIGN.md).
+  Verified against a real PostgreSQL database via `storetest`.
+- `storetest`'s conformance suite now creates a real `Platform` before
+  testing deployments, cached tokens, and keys, instead of referencing a
+  synthetic platform ID that was never created -- `memstore`'s
+  unconstrained maps didn't care, but this is required for a `Store`
+  that enforces referential integrity (like `pgstore`) to be tested
+  correctly.

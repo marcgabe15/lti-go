@@ -223,6 +223,23 @@ All planned phases through v0.4 have shipped; `PlatformManager`
 ergonomics polish and any spec gaps found in real-world use are the main
 candidates for a v0.5 before the v1.0 stabilization pass.
 
+- **pgstore (shipped)** -- a PostgreSQL `lti.Store` implementation.
+  Deliberately driver-agnostic: it only depends on `*sql.DB`, not a
+  specific driver's native API, so it doesn't force a dependency choice
+  on consumers (the same reasoning that keeps the root module's own
+  dependency footprint to `go-jose` + `testify`). Table and column names
+  mirror ltijs's MongoDB schema (`platforms`, `nonces`, `idTokens`,
+  `accesstokens` collections) wherever the data model overlaps -- see
+  `pgstore/schema.sql`'s header comment for the full mapping, including
+  where this SDK's schema necessarily diverges (`deployments` has no
+  ltijs equivalent; `id_tokens.claims` is one `JSONB` column instead of
+  flattened top-level fields; `platform_keys` is a separate table,
+  closer to ltijs's *legacy* key-storage schema than its current one).
+  Schema creation is idempotent `CREATE TABLE IF NOT EXISTS` run once at
+  `New`, not a goose/migration-tool integration -- there's exactly one
+  version of the schema to apply, so a migration framework's versioning
+  machinery would be pure overhead here.
+
 ## Verification (v0.1)
 
 - `go build ./...`, `go vet ./...`, `gofmt -s -l .` clean.
